@@ -3,6 +3,11 @@ from loguru import logger
 import os
 import time
 from telebot.types import InputFile
+import boto3
+
+# Initialize AWS clients
+s3_client = boto3.client('s3')
+sqs_client = boto3.client('sqs')
 
 
 class Bot:
@@ -17,7 +22,8 @@ class Bot:
         time.sleep(0.5)
 
         # set the webhook URL
-        self.telegram_bot_client.set_webhook(url=f'{telegram_chat_url}/{token}/', timeout=60)
+        self.telegram_bot_client.set_webhook(url=f'{telegram_chat_url}/{token}/', timeout=60,
+                                             certificate=open('public.pem', 'r'))
 
         logger.info(f'Telegram Bot information\n\n{self.telegram_bot_client.get_me()}')
 
@@ -66,12 +72,39 @@ class Bot:
 
 
 class ObjectDetectionBot(Bot):
+    def __init__(self, token, telegram_chat_url, s3_bucket_name, sqs_queue_url):
+        super().__init__(token, telegram_chat_url)
+        self.s3_bucket_name = s3_bucket_name
+        self.sqs_queue_url = sqs_queue_url
+
+    def upload_photo_to_s3(self, photo_path):
+        # TODO upload the photo to S3
+        s3_key = os.path.basename(photo_path)
+        s3_client.upload_file(photo_path, self.s3_bucket_name, s3_key)
+        logger.info(f'Uploaded {photo_path} to S3 bucket {self.s3_bucket_name} with key {s3_key}')
+        return s3_key
+
+    def send_job_to_sqs(self, s3_key):
+        # TODO send a job to the SQS queue
+        message_body = {
+            's3_bucket_name': self.s3_bucket_name,
+            's3_key': s3_key
+        }
+
+        response = sqs_client.send_message(
+            QueueUrl=self.sqs_queue_url,
+            MessageBody=str(message_body)
+        )
+
+        logger.info(f'Sent job to SQS queue {self.sqs_queue_url} with response {response}')
+
     def handle_message(self, msg):
         logger.info(f'Incoming message: {msg}')
-
+        # TODO send message to the Telegram end-user (e.g. Your image is being processed. Please wait...)
         if self.is_current_msg_photo(msg):
             photo_path = self.download_user_photo(msg)
-
-            # TODO upload the photo to S3
-            # TODO send a job to the SQS queue
-            # TODO send message to the Telegram end-user (e.g. Your image is being processed. Please wait...)
+            s3_key = self.upload_photo_to_s3(photo_path)
+            self.send_job_to_sqs(s3_key)
+            self.send_text(msg['chat']['id'], 'Your image is being processed. Please wait ...')
+        else:
+            super().handle_message(msg)
