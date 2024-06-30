@@ -16,9 +16,14 @@ jobs:
 
       - name: Build and push image
         run: |
-          cd polybot
-          
-          # TODO your implementation here....          
+            cd polybot
+            docker logout
+            docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_PASSWORD }}
+            
+            IMAGE_NAME=polybot:${{ github.run_number }}
+            docker build -t $IMAGE_NAME .
+            docker tag $IMAGE_NAME ${{ secrets.DOCKERHUB_USERNAME }}/$IMAGE_NAME
+            docker push ${{ secrets.DOCKERHUB_USERNAME }}/$IMAGE_NAME        
 
   Deploy:
     runs-on: ubuntu-latest

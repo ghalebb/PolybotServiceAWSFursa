@@ -55,6 +55,23 @@ def webhook():
     return 'Ok'
 
 
+def count_elements(input_list):
+    element_count = {}
+    for element in input_list:
+        if element in element_count:
+            element_count[element] += 1
+        else:
+            element_count[element] = 1
+    return element_count
+
+
+def dict_to_text(element_count):
+    lines = ["I was able to recognize the following objects:"]
+    for element, count in element_count.items():
+        lines.append(f"{element} : {count}")
+    return "\n".join(lines)
+
+
 @app.route(f'/results', methods=['POST'])
 def results():
     prediction_id = request.args.get('prediction_id')
@@ -63,7 +80,6 @@ def results():
     dynamodb = boto3.resource('dynamodb', region_name='us-west-2')
     table = dynamodb.Table(DYNAMODB_TABLE_NAME)
     response = table.get_item(Key={'prediction_id': prediction_id})
-    print("THIS IS THE RESPONSE /results", response)
     if 'Item' not in response:
         return 'Prediction not found', 404
 
@@ -71,12 +87,13 @@ def results():
     chat_id = result['chat_id']
     labels = result['labels']
     detected_objects = [label['class'] for label in labels]
+    detected_obj_dict = count_elements(detected_objects)
 
-    if detected_objects:
-        detected_string = ', '.join(detected_objects)
+    if detected_obj_dict:
+        detected_string = dict_to_text(detected_obj_dict)
         bot.send_text(chat_id, f"Detected objects: {detected_string}")
     else:
-        bot.send_text(chat_id,"No objects detected")
+        bot.send_text(chat_id, "Sorry, I don't have my eyes today, I couldn't recognize anything")
     return 'Ok'
 
 
