@@ -1,22 +1,18 @@
+import json
+
 import flask
 from flask import request
 import os
 from bot import ObjectDetectionBot
 import boto3
+from botocore.exceptions import ClientError
 
 app = flask.Flask(__name__)
 
 
 # TODO load TELEGRAM_TOKEN value from Secret Manager
 
-# Use this code snippet in your app.
-# If you need more information about configurations
-# or implementing the sample code, visit the AWS docs:
-# https://aws.amazon.com/developer/language/python/
-
-from botocore.exceptions import ClientError
 def get_secret():
-
     secret_name = "Telegram-dev-token"
     region_name = "us-west-2"
 
@@ -29,7 +25,7 @@ def get_secret():
 
     try:
         get_secret_value_response = client.get_secret_value(
-            SecretId=secret_name
+            SecretId=secret_name,
         )
     except ClientError as e:
         # For a list of exceptions thrown, see
@@ -39,8 +35,8 @@ def get_secret():
     return get_secret_value_response['SecretString']
 
 
-TELEGRAM_TOKEN = get_secret()
-
+data_dict = json.loads(get_secret())
+TELEGRAM_TOKEN = data_dict["TELEGRAM_TOKEN"]
 TELEGRAM_APP_URL = os.environ['TELEGRAM_APP_URL']
 S3_BUCKET_NAME = os.environ['S3_BUCKET_NAME']
 SQS_QUEUE_URL = os.environ['SQS_QUEUE_URL']
@@ -61,20 +57,26 @@ def webhook():
 
 @app.route(f'/results', methods=['POST'])
 def results():
-    prediction_id = request.args.get('predictionId')
+    prediction_id = request.args.get('prediction_id')
 
     # TODO use the prediction_id to retrieve results from DynamoDB and send to the end-user
-    dynamodb = boto3.resource('dynamodb')
+    dynamodb = boto3.resource('dynamodb', region_name='us-west-2')
     table = dynamodb.Table(DYNAMODB_TABLE_NAME)
-    response = table.get_item(Key={'predictionId': prediction_id})
+    response = table.get_item(Key={'prediction_id': prediction_id})
+    print("THIS IS THE RESPONSE /results", response)
     if 'Item' not in response:
         return 'Prediction not found', 404
 
     result = response['Item']
-    chat_id = result['chatId']
-    text_results = result['results']
+    chat_id = result['chat_id']
+    labels = result['labels']
+    detected_objects = [label['class'] for label in labels]
 
-    bot.send_text(chat_id, text_results)
+    if detected_objects:
+        detected_string = ', '.join(detected_objects)
+        bot.send_text(chat_id, f"Detected objects: {detected_string}")
+    else:
+        bot.send_text(chat_id,"No objects detected")
     return 'Ok'
 
 
@@ -87,4 +89,4 @@ def load_test():
 
 if __name__ == "__main__":
     bot = ObjectDetectionBot(TELEGRAM_TOKEN, TELEGRAM_APP_URL, S3_BUCKET_NAME, SQS_QUEUE_URL)
-    app.run(host='0.0.0.0', port=8443, ssl_context=('private.key', 'public.pem'))
+    app.run(host='0.0.0.0', port=8443, ssl_context=('public.pem', 'private.key'))

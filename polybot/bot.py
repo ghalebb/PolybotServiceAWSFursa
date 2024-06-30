@@ -7,7 +7,7 @@ import boto3
 
 # Initialize AWS clients
 s3_client = boto3.client('s3')
-sqs_client = boto3.client('sqs')
+sqs_client = boto3.client('sqs', region_name="us-west-2")
 
 
 class Bot:
@@ -84,11 +84,12 @@ class ObjectDetectionBot(Bot):
         logger.info(f'Uploaded {photo_path} to S3 bucket {self.s3_bucket_name} with key {s3_key}')
         return s3_key
 
-    def send_job_to_sqs(self, s3_key):
+    def send_job_to_sqs(self, s3_key,msg):
         # TODO send a job to the SQS queue
         message_body = {
             's3_bucket_name': self.s3_bucket_name,
-            's3_key': s3_key
+            's3_key': s3_key,
+            'chat_id': msg['chat']['id'],
         }
 
         response = sqs_client.send_message(
@@ -104,7 +105,7 @@ class ObjectDetectionBot(Bot):
         if self.is_current_msg_photo(msg):
             photo_path = self.download_user_photo(msg)
             s3_key = self.upload_photo_to_s3(photo_path)
-            self.send_job_to_sqs(s3_key)
+            self.send_job_to_sqs(s3_key,msg)
             self.send_text(msg['chat']['id'], 'Your image is being processed. Please wait ...')
         else:
             super().handle_message(msg)
