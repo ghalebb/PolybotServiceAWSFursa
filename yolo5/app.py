@@ -7,7 +7,10 @@ from loguru import logger
 import os
 import boto3
 import requests
+from flask import Flask, jsonify
 
+# Flask app for health check
+app = Flask(__name__)
 images_bucket = os.environ['BUCKET_NAME']
 queue_name = os.environ['SQS_QUEUE_NAME']
 region_name = os.environ['REGION_NAME']
@@ -109,7 +112,8 @@ def consume():
                 table.put_item(Item=prediction_summary)
 
                 # Perform a GET request to Polybot to `/results` endpoint
-                response = requests.post(f'{polybot_endpoint}/results', params={'prediction_id': prediction_id, 'chat_id': chat_id},verify=False)
+                response = requests.post(f'{polybot_endpoint}/results',
+                                         params={'prediction_id': prediction_id, 'chat_id': chat_id}, verify=False)
                 if response.status_code == 200:
                     logger.info(f'prediction: {prediction_id}. Polybot results endpoint notified successfully')
                 else:
@@ -119,5 +123,20 @@ def consume():
             sqs_client.delete_message(QueueUrl=queue_name, ReceiptHandle=receipt_handle)
 
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    try:
+        sqs_client.get_queue_url(QueueName="polybot-events-w2")
+        s3_client.head_bucket(Bucket=images_bucket)
+        return jsonify(status='healthy'), 200
+    except Exception as e:
+        logger.error(f'Health check failed: {e}')
+        return jsonify(status='unhealthy'), 500
+
+
 if __name__ == "__main__":
+    from threading import Thread
+
+    flask_thread = Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 8081})
+    flask_thread.start()
     consume()
