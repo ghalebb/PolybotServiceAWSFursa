@@ -10,8 +10,6 @@ from botocore.exceptions import ClientError
 app = flask.Flask(__name__)
 
 
-# TODO load TELEGRAM_TOKEN value from Secret Manager
-
 def get_secret():
     secret_name = "Telegram-dev-token"
     region_name = "us-west-2"
@@ -28,8 +26,6 @@ def get_secret():
             SecretId=secret_name,
         )
     except ClientError as e:
-        # For a list of exceptions thrown, see
-        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
         raise e
 
     return get_secret_value_response['SecretString']
@@ -76,7 +72,6 @@ def dict_to_text(element_count):
 def results():
     prediction_id = request.args.get('prediction_id')
 
-    # TODO use the prediction_id to retrieve results from DynamoDB and send to the end-user
     dynamodb = boto3.resource('dynamodb', region_name='us-west-2')
     table = dynamodb.Table(DYNAMODB_TABLE_NAME)
     response = table.get_item(Key={'prediction_id': prediction_id})
